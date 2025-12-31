@@ -21,6 +21,9 @@ def inject_now():
 # Initialize DynamoDB resource
 dynamodb = boto3.resource('dynamodb', region_name='us-east-1')  # Update to your AWS region
 
+# SNS Topic ARN - Update this with your actual SNS Topic ARN
+SNS_TOPIC_ARN = "arn:aws:sns:us-east-1:YOUR_ACCOUNT_ID:NextGenHospital-Notifications"
+
 # DynamoDB Tables
 users_table = dynamodb.Table('NextGenHospital_Users')
 doctors_table = dynamodb.Table('NextGenHospital_Doctors')
@@ -626,5 +629,6 @@ def server_error(e):
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
+
 
 
