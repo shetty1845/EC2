@@ -21,8 +21,9 @@ def inject_now():
 # Initialize DynamoDB resource
 dynamodb = boto3.resource('dynamodb', region_name='us-east-1')  # Update to your AWS region
 
-# SNS Topic ARN - Update this with your actual SNS Topic ARN
-SNS_TOPIC_ARN = "arn:aws:sns:us-east-1:586794464750:topic"
+# Initialize SNS client
+sns_client = boto3.client('sns', region_name='us-east-1')
+
 # DynamoDB Tables
 users_table = dynamodb.Table('NextGenHospital_Users')
 doctors_table = dynamodb.Table('NextGenHospital_Doctors')
@@ -30,11 +31,14 @@ appointments_table = dynamodb.Table('NextGenHospital_Appointments')
 patient_records_table = dynamodb.Table('NextGenHospital_PatientRecords')
 contact_messages_table = dynamodb.Table('NextGenHospital_ContactMessages')
 
+# Update this with your actual SNS topic ARN (include the topic name at the end)
+SNS_TOPIC_ARN = "arn:aws:sns:us-east-1:586794464750:topic"
+
 # Email settings
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
 SENDER_EMAIL = "gtharunasri19@gmail.com"  # Update with your email
-SENDER_PASSWORD = "umpb bimb pahp axmc"  # Update with your app password
+SENDER_PASSWORD = "npfp nhdg sfkw qelm"  # Update with your app password
 
 # Health tips data
 health_tips = [
@@ -93,6 +97,21 @@ common_ailments = {
         "when_to_see_doctor": "If symptoms are severe or last more than 2 days"
     }
 }
+
+# Function to send SNS notification
+def send_sns_notification(message, subject="Next Gen Hospital Notification"):
+    """Send notification via AWS SNS"""
+    try:
+        response = sns_client.publish(
+            TopicArn=SNS_TOPIC_ARN,
+            Message=message,
+            Subject=subject
+        )
+        print(f"SNS notification sent successfully: {response['MessageId']}")
+        return True
+    except Exception as e:
+        print(f"Failed to send SNS notification: {e}")
+        return False
 
 # Function to send email
 def send_email(to_email, subject, body):
@@ -185,6 +204,10 @@ def register():
         welcome_message = f"Welcome to Next Gen Hospital, {name}!\n\nThank you for registering with us. We're dedicated to providing you with the best healthcare services."
         send_email(email, "Welcome to Next Gen Hospital", welcome_message)
         
+        # Send SNS notification for new registration
+        sns_message = f"New Patient Registration\n\nName: {name}\nEmail: {email}\nPhone: {phone}\nRegistration Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        send_sns_notification(sns_message, "New Patient Registration")
+        
         flash("Registration successful! You can now log in.", "success")
         return redirect(url_for('login'))
         
@@ -261,6 +284,10 @@ def contact():
         # Send notification to hospital staff
         admin_message = f"New contact message from {name} ({email})\nSubject: {subject}\n\nMessage:\n{message}"
         send_email(SENDER_EMAIL, f"New Contact Form Submission: {subject}", admin_message)
+        
+        # Send SNS notification for new contact message
+        sns_message = f"New Contact Form Submission\n\nFrom: {name}\nEmail: {email}\nSubject: {subject}\nMessage: {message}\nSubmitted: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        send_sns_notification(sns_message, f"New Contact: {subject}")
         
         flash("Your message has been sent! We'll get back to you soon.", "success")
         return redirect(url_for('contact'))
@@ -370,6 +397,10 @@ def book_appointment():
     appointment_confirmation = f"Dear {session['user_name']},\n\nYour appointment with Dr. {doctor['name']} ({doctor['specialty']}) has been scheduled for {appointment_date} at {appointment_time}.\n\nReason: {reason}\n\nPlease arrive 15 minutes before your scheduled time.\n\nBest regards,\nNext Gen Hospital"
     send_email(session['user_email'], "Appointment Confirmation", appointment_confirmation)
     
+    # Send SNS notification for new appointment
+    sns_message = f"New Appointment Booked\n\nPatient: {session['user_name']}\nEmail: {session['user_email']}\nDoctor: Dr. {doctor['name']} ({doctor['specialty']})\nDate: {appointment_date}\nTime: {appointment_time}\nReason: {reason}\nStatus: Scheduled"
+    send_sns_notification(sns_message, "New Appointment Booked")
+    
     flash("Appointment booked successfully!", "success")
     return redirect(url_for('appointments'))
 
@@ -407,6 +438,10 @@ def cancel_appointment(appointment_id):
     # Send cancellation email
     cancellation_message = f"Dear {session['user_name']},\n\nYour appointment with Dr. {appointment['doctor_name']} scheduled for {appointment['appointment_date']} at {appointment['appointment_time']} has been cancelled.\n\nIf you wish to reschedule, please book a new appointment on our website.\n\nBest regards,\nNext Gen Hospital"
     send_email(session['user_email'], "Appointment Cancellation Confirmation", cancellation_message)
+    
+    # Send SNS notification for appointment cancellation
+    sns_message = f"Appointment Cancelled\n\nPatient: {session['user_name']}\nEmail: {session['user_email']}\nDoctor: Dr. {appointment['doctor_name']}\nOriginal Date: {appointment['appointment_date']}\nOriginal Time: {appointment['appointment_time']}\nCancelled At: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    send_sns_notification(sns_message, "Appointment Cancelled")
     
     flash("Appointment cancelled successfully.", "success")
     return redirect(url_for('appointments'))
@@ -502,6 +537,12 @@ def update_profile():
 
         # Update session and notify
         session['user_name'] = name
+        
+        # Send SNS notification for critical profile updates (blood type, allergies, medications)
+        if blood_type or allergies_list or medications_list:
+            sns_message = f"Patient Profile Updated - Critical Information\n\nPatient: {name}\nEmail: {session['user_email']}\nBlood Type: {blood_type}\nAllergies: {', '.join(allergies_list) if allergies_list else 'None'}\nMedications: {', '.join(medications_list) if medications_list else 'None'}\nUpdated At: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            send_sns_notification(sns_message, "Patient Profile Updated")
+        
         flash("Profile updated successfully!", "success")
         return redirect(url_for('patient_profile'))
 
@@ -612,6 +653,10 @@ def add_doctor():
         welcome_message = f"Dear Dr. {name},\n\nYou have been added to the Next Gen Hospital portal. You can now login with the following details:\n\nEmail: {email}\nTemporary Password: temppassword123\n\nPlease change your password after first login.\n\nBest regards,\nNext Gen Hospital Administration"
         send_email(email, "Welcome to Next Gen Hospital Portal", welcome_message)
         
+        # Send SNS notification for new doctor addition
+        sns_message = f"New Doctor Added to System\n\nName: Dr. {name}\nEmail: {email}\nSpecialty: {specialty}\nQualification: {qualification}\nExperience: {experience} years\nPhone: {phone}\nAdded By: {session['user_name']}\nAdded At: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        send_sns_notification(sns_message, "New Doctor Added")
+        
         flash(f"Doctor {name} added successfully!", "success")
         return redirect(url_for('doctors_list'))
         
@@ -627,9 +672,4 @@ def server_error(e):
     return render_template('500.html', is_logged_in=is_logged_in()), 500
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
-
-
-
-
-
+    app.run(host='0.0.0.0', port=80, debug=True)
